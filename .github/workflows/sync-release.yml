@@ -1,0 +1,122 @@
+name: Sync & Release
+
+# 개인 계정(웹) 저장소의 최신 코드를 끌어와 데스크톱 앱을 새로 빌드·배포한다.
+#
+# 사용법
+#   Actions 탭 → 왼쪽 "Sync & Release" → 우측 [Run workflow]
+#   → 새 버전 번호만 입력하고 초록 버튼 클릭. 끝.
+#
+# 하는 일
+#   1. 개인 저장소(기본값 taeo617/foundfoundedmeet)의 main 최신 소스를 그대로 덮어씀
+#   2. scripts/desktop-patch.mjs 로 데스크톱용 패치를 다시 적용
+#   3. 버전 올리고 커밋 + 태그
+#   4. Windows / macOS 설치 파일 빌드 후 Releases 에 게시
+#      → 팀원들 앱은 다음 실행 때 "새 버전이 나왔어요" 안내를 띄운다
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '새 버전 번호 (예: 1.0.2)'
+        required: true
+      upstream:
+        description: '웹 코드를 가져올 저장소'
+        required: true
+        default: 'taeo617/foundfoundedmeet'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: 웹 최신 코드 가져오기
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 업스트림 tarball 에는 electron/ · scripts/ · .github/ 가 없으므로
+      # 덮어써도 데스크톱 관련 파일은 그대로 살아남는다.
+      - name: 업스트림 최신 소스 내려받기
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/${{ inputs.upstream }}/archive/refs/heads/main.tar.gz" \
+            | tar xz --strip-components=1
+          echo "가져온 파일 수: $(git status --porcelain | wc -l)"
+
+      - name: 데스크톱 패치 적용
+        run: node scripts/desktop-patch.mjs
+
+      - name: 버전 설정
+        run: npm pkg set version="${{ inputs.version }}"
+
+      - name: 빌드 검증 (여기서 실패하면 배포 안 함)
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: 커밋 & 태그
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "웹 최신본 동기화 + v${{ inputs.version }}" || echo "변경 사항 없음 — 커밋 생략"
+          git tag -f "v${{ inputs.version }}"
+          git push origin HEAD:main
+          git push -f origin "v${{ inputs.version }}"
+
+  build:
+    name: 설치 파일 빌드
+    needs: sync
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          - os: macos-latest
+            script: dist:mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 의존성 설치
+        run: npm install --no-audit --no-fund
+
+      - name: 설치 파일 만들기
+        run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
+          VITE_MEMBER_PASSWORD: ${{ secrets.VITE_MEMBER_PASSWORD }}
+
+      - name: Releases 에 게시
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: ${{ inputs.version }}
+          files: |
+            release/*.exe
+            release/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 빌드 결과 보관 (릴리스 실패 대비)
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            release/*.exe
+            release/*.dmg
