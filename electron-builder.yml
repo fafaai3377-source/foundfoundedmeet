@@ -1,0 +1,54 @@
+appId: com.foundfounded.meet
+productName: foundfoundedmeet
+copyright: © foundfounded
+
+directories:
+  output: release
+  buildResources: electron/icons
+
+# dist(내장된 웹 빌드) + electron 셸만 패키징한다.
+# 앱 의존성은 이미 vite 가 dist 로 번들했으므로 node_modules 는 넣지 않는다.
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - "!node_modules/**/*"
+
+asar: true
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: public/icon-512.png
+  artifactName: foundfoundedmeet-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: foundfoundedmeet
+  installerLanguages:
+    - ko-KR
+    - en-US
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: foundfoundedmeet-Portable-${version}.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.productivity
+  icon: public/icon-512.png
+
+linux:
+  target: [AppImage]
+  category: Office
+  icon: public/icon-512.png

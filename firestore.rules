@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // helper: 로그인 여부 확인
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /resources/{resourceId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /reservations/{resId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /sessions/{sessionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /announcements/{annId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>로그인 비밀번호 설정</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+        background: #fff;
+        color: #1a1a1a;
+        font-size: 13px;
+      }
+      h1 { font-size: 16px; margin: 0 0 6px; letter-spacing: -0.02em; }
+      p.desc { margin: 0 0 20px; color: #8a8a8a; font-size: 12px; line-height: 1.5; }
+      label { display: block; font-weight: 600; margin: 0 0 6px; font-size: 12px; }
+      input {
+        width: 100%; padding: 9px 11px; border: 1px solid #e4e4e4; border-radius: 8px;
+        font-size: 13px; outline: none; background: #fafafa; font-family: inherit;
+      }
+      input:focus { border-color: #1a1a1a; background: #fff; }
+      .field { margin-bottom: 16px; }
+      .hint { margin-top: 5px; color: #a0a0a0; font-size: 11px; }
+      .row { display: flex; gap: 8px; margin-top: 24px; }
+      button {
+        flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 600;
+        cursor: pointer; font-family: inherit; border: 1px solid #e4e4e4; background: #fff; color: #555;
+      }
+      button.primary { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+      button:hover { opacity: 0.85; }
+      .saved { margin-top: 12px; color: #2e9e5b; font-size: 12px; display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>로그인 비밀번호 설정</h1>
+    <p class="desc">
+      웹 버전에서 쓰던 비밀번호를 그대로 입력하세요.<br />
+      이 PC에만 저장되며, 앱을 다시 설치해도 유지됩니다.
+    </p>
+
+    <div class="field">
+      <label for="member">멤버 비밀번호</label>
+      <input id="member" type="password" autocomplete="off" placeholder="일반 멤버 로그인용" />
+      <div class="hint">이름(예: 태영)으로 로그인할 때 쓰는 비밀번호</div>
+    </div>
+
+    <div class="field">
+      <label for="admin">관리자 비밀번호</label>
+      <input id="admin" type="password" autocomplete="off" placeholder="admin 로그인용" />
+      <div class="hint">이름에 admin 을 입력할 때 쓰는 비밀번호</div>
+    </div>
+
+    <div class="row">
+      <button id="cancel" type="button">나중에</button>
+      <button id="save" class="primary" type="button">저장하고 새로고침</button>
+    </div>
+    <div class="saved" id="saved">저장되었습니다.</div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      (async () => {
+        const env = (await window.ffm.getEnv()) || {};
+        $('member').value = env.VITE_MEMBER_PASSWORD || '';
+        $('admin').value = env.VITE_ADMIN_PASSWORD || '';
+      })();
+
+      $('save').addEventListener('click', async () => {
+        await window.ffm.setEnv({
+          VITE_MEMBER_PASSWORD: $('member').value,
+          VITE_ADMIN_PASSWORD: $('admin').value,
+        });
+        $('saved').style.display = 'block';
+        setTimeout(() => window.ffm.close(), 500);
+      });
+
+      $('cancel').addEventListener('click', () => window.ffm.close());
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') $('save').click();
+        if (e.key === 'Escape') $('cancel').click();
+      });
+    </script>
+  </body>
+</html>
