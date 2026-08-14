@@ -47,6 +47,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # 저장소 Settings → Secrets and variables → Actions 에 등록한 값이 빌드에 들어간다.
+          # 웹(Vercel)과 같은 값을 넣으면 앱에서도 동일한 비밀번호로 로그인된다.
+          VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
+          VITE_MEMBER_PASSWORD: ${{ secrets.VITE_MEMBER_PASSWORD }}
 
       # 태그를 푸시한 경우 → Releases 페이지에 게시 (팀원 배포용)
       - name: Publish to Releases

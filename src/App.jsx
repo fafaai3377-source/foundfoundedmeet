@@ -256,22 +256,23 @@ function Avatar({ name, label, size = 36, solid = false, onClick, className, sty
 /* ===================== login modal ===================== */
 function LoginModal({ message, onClose, onLogin, membersList }) {
   const [name, setName] = useState(""); const [pw, setPw] = useState(""); const [err, setErr] = useState("");
+  const [remember, setRemember] = useState(() => { try { return localStorage.getItem("remember_login") !== "0"; } catch { return true; } });
   const submit = () => { 
     const trimmedName = name.trim();
     if (!trimmedName) return setErr("이름을 입력해주세요."); 
     if (trimmedName.toLowerCase() === "admin") {
       if (pw !== env("VITE_ADMIN_PASSWORD")) return setErr("비밀번호가 올바르지 않아요.");
-      return onLogin("admin");
+      return onLogin("admin", remember);
     }
     if (trimmedName.toLowerCase() === "guest") {
       if (pw !== "1234") return setErr("비밀번호가 올바르지 않아요.");
-      return onLogin("Guest");
+      return onLogin("Guest", remember);
     }
     const member = (membersList || MEMBERS).find((m) => m.name === trimmedName);
     if (!member || member.deleted) return setErr("등록되지 않은 멤버 이름입니다. 등록된 이름으로 로그인해 주세요.");
     if (member.inactive || member.active === false) return setErr("해당 계정은 정지되어 로그인할 수 없습니다.");
     if (pw !== env("VITE_MEMBER_PASSWORD")) return setErr("비밀번호가 올바르지 않아요."); 
-    onLogin(trimmedName); 
+    onLogin(trimmedName, remember); 
   };
   return (
     <div className="ov fixed inset-0 z-[70] flex items-end justify-center p-0 sm:items-center sm:p-4" style={{ background: "rgba(20,20,20,.5)" }} onClick={onClose}>
@@ -288,6 +289,13 @@ function LoginModal({ message, onClose, onLogin, membersList }) {
           <input type="password" className="inp w-full bg-transparent py-2.5 text-sm outline-none" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="비밀번호" />
         </div>
         {err && <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold" style={{ color: PASTEL.red.text }}><AlertCircle size={13} />{err}</div>}
+        <label className="mt-3.5 flex w-fit cursor-pointer select-none items-center gap-2 text-[13px]" style={{ color: C.muted }}>
+          <input type="checkbox" className="sr-only" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          <span className="grid h-[18px] w-[18px] place-items-center rounded-[5px] border" style={{ borderColor: remember ? C.ink : C.border, background: remember ? C.ink : "transparent" }}>
+            {remember && <Check size={12} strokeWidth={3} style={{ color: "var(--bg)" }} />}
+          </span>
+          로그인 정보 저장
+        </label>
         <button onClick={submit} className="lift mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg py-3 text-sm font-medium" style={{ background: C.ink, color: "var(--bg)", boxShadow: "0 1px 2px rgba(0,0,0,.05)" }}><LogIn size={16} /> 로그인</button>
       </div>
     </div>
@@ -2140,12 +2148,18 @@ const [dayEventsDate, setDayEventsDate] = useState(null);
   function showToast(m) { setToast(m); setTimeout(() => setToast(null), 2600); }
 
   function requireAuth(fn, msg) { if (user) return fn(); setAuthMsg(msg || "계속하려면 로그인이 필요해요."); setAuthPending(() => fn); setAuthOpen(true); }
-      function doLogin(name) { 
-    setReservations((p) => p.map((r) => (r.owner === "나" ? { ...r, owner: name } : r))); 
-    setUser(name); 
-    localStorage.setItem("last_user", name);
-    const token = { name: name, exp: Date.now() + 30 * 24 * 60 * 60 * 1000 };
-    localStorage.setItem("auth_token", btoa(unescape(encodeURIComponent(JSON.stringify(token)))));
+      function doLogin(name, remember = true) {
+    setReservations((p) => p.map((r) => (r.owner === "나" ? { ...r, owner: name } : r)));
+    setUser(name);
+    try { localStorage.setItem("remember_login", remember ? "1" : "0"); } catch { /* noop */ }
+    if (remember) {
+      localStorage.setItem("last_user", name);
+      const token = { name: name, exp: Date.now() + 30 * 24 * 60 * 60 * 1000 };
+      localStorage.setItem("auth_token", btoa(unescape(encodeURIComponent(JSON.stringify(token)))));
+    } else {
+      localStorage.removeItem("last_user");
+      localStorage.removeItem("auth_token");
+    }
     setAuthOpen(false); 
     const meId = MEMBERS.find((m) => m.name === name)?.id;
     if (meId) {

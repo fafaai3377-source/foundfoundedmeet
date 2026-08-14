@@ -16,7 +16,6 @@ const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
-const net = require('node:net');
 const { checkForUpdates, startAutoCheck } = require('./updater.cjs');
 
 const REMOTE_ORIGIN = process.env.FFM_REMOTE_ORIGIN || 'https://foundfoundedmeet.vercel.app';
@@ -153,28 +152,82 @@ function createServer() {
   });
 }
 
-function findFreePort() {
+/**
+ * ⚠️ 포트를 매번 랜덤으로 잡으면 안 된다.
+ *
+ * 브라우저의 localStorage 는 "출처(origin)" 단위로 저장되는데,
+ * 출처에는 포트 번호가 포함된다. 포트가 바뀌면 앱 입장에서는 완전히 다른 사이트가 되어
+ * 자동 로그인 토큰 · 가이드 확인 기록 · 테마 설정이 실행할 때마다 전부 날아간다.
+ *
+ * 그래서 포트를 고정하고, 한 번 잡은 포트는 userData 에 기록해 계속 재사용한다.
+ */
+const DEFAULT_PORT = 47321;
+const PORT_FILE = path.join(app.getPath('userData'), 'port.json');
+
+function readSavedPort() {
+  try {
+    if (fs.existsSync(PORT_FILE)) {
+      const n = JSON.parse(fs.readFileSync(PORT_FILE, 'utf8'))?.port;
+      if (Number.isInteger(n) && n > 1024 && n < 65536) return n;
+    }
+  } catch {
+    /* 무시하고 기본 포트 사용 */
+  }
+  return DEFAULT_PORT;
+}
+
+function savePort(port) {
+  try {
+    fs.mkdirSync(path.dirname(PORT_FILE), { recursive: true });
+    fs.writeFileSync(PORT_FILE, JSON.stringify({ port }), 'utf8');
+  } catch (e) {
+    console.error('포트 기록 실패:', e.message);
+  }
+}
+
+function listenOn(server, port) {
   return new Promise((resolve, reject) => {
-    const probe = net.createServer();
-    probe.unref();
-    probe.on('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
+    const onError = (err) => {
+      server.removeListener('error', onError);
+      reject(err);
+    };
+    server.once('error', onError);
+    server.listen(port, '127.0.0.1', () => {
+      server.removeListener('error', onError);
+      resolve();
     });
   });
 }
 
 async function startServer() {
-  const port = await findFreePort();
-  await new Promise((resolve, reject) => {
-    const server = createServer();
-    server.on('error', reject);
-    server.listen(port, '127.0.0.1', resolve);
-  });
-  serverPort = port;
-  console.log(`[ffm] local server ready: http://127.0.0.1:${port} (api → ${REMOTE_ORIGIN})`);
-  return `http://127.0.0.1:${port}`;
+  const server = createServer();
+
+  // 저장된 포트 → 기본 포트 대역 순으로 시도
+  const candidates = [readSavedPort()];
+  for (let i = 0; i < 20; i++) candidates.push(DEFAULT_PORT + i);
+
+  let bound = 0;
+  for (const port of new Set(candidates)) {
+    try {
+      await listenOn(server, port);
+      bound = port;
+      break;
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE' && err.code !== 'EACCES') throw err;
+    }
+  }
+
+  // 대역이 전부 막혔을 때만 임의 포트로 (이 경우에만 저장값이 초기화된다)
+  if (!bound) {
+    await listenOn(server, 0);
+    bound = server.address().port;
+    console.warn('[ffm] 고정 포트 대역이 모두 사용 중이라 임의 포트를 사용합니다.');
+  }
+
+  savePort(bound);
+  serverPort = bound;
+  console.log(`[ffm] local server ready: http://127.0.0.1:${bound} (api → ${REMOTE_ORIGIN})`);
+  return `http://127.0.0.1:${bound}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -233,7 +286,7 @@ function buildMenu() {
           submenu: [
             { role: 'about', label: 'foundfoundedmeet 정보' },
             { type: 'separator' },
-            { label: '로그인 비밀번호 설정…', accelerator: 'Cmd+,', click: openSettings },
+            { label: '로그인 비밀번호 재설정…', accelerator: 'Cmd+,', click: openSettings },
             { type: 'separator' },
             { role: 'hide', label: '가리기' },
             { role: 'quit', label: '종료' },
@@ -243,7 +296,7 @@ function buildMenu() {
     {
       label: '파일',
       submenu: [
-        { label: '로그인 비밀번호 설정…', accelerator: 'Ctrl+,', click: openSettings, visible: !isMac },
+        { label: '로그인 비밀번호 재설정…', accelerator: 'Ctrl+,', click: openSettings, visible: !isMac },
         {
           label: '설정 폴더 열기',
           click: () => shell.openPath(app.getPath('userData')),
@@ -354,11 +407,8 @@ async function createWindow() {
 
   await mainWindow.loadURL(origin);
 
-  // 최초 실행 시 비밀번호가 비어 있으면 설정 창 안내
-  const env = readEnv();
-  if (!env.VITE_MEMBER_PASSWORD && !env.VITE_ADMIN_PASSWORD) {
-    setTimeout(openSettings, 900);
-  }
+  // 비밀번호는 빌드 시점(GitHub Secrets)에 들어가므로 첫 실행 안내창은 띄우지 않는다.
+  // 비밀번호가 바뀌었을 때만 메뉴 → 파일 → "로그인 비밀번호 재설정"으로 덮어쓸 수 있다.
 }
 
 /* ------------------------------------------------------------------ */

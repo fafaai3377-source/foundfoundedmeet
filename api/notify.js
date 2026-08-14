@@ -164,18 +164,24 @@ export default async function handler(req, res) {
       }
     }
 
+    const deadEndpoints = [];
     const webPushPromises = uniqueWebTokens.map(sub => {
       const payload = JSON.stringify({ title, body, url });
-      return webpush.sendNotification(sub, payload, {
-        headers: {
-          'Urgency': 'high',
-          'TTL': '86400'
-        },
-        urgency: 'high',
-        TTL: 86400
-      }).catch(err => {
-        console.error('Web push error:', err);
-      });
+      // TTL 을 headers 와 최상위 옵션에 동시에 주면 web-push 가
+      // "Duplicated headers defined [TTL]" 로 전송 자체를 거부한다. 한 곳에만 둔다.
+      try {
+        return webpush.sendNotification(sub, payload, {
+          TTL: 86400,
+          urgency: 'high'
+        }).catch(err => {
+          console.error('Web push error:', err.statusCode, err.body || err.message);
+          if (err.statusCode === 410 || err.statusCode === 404) deadEndpoints.push(sub.endpoint);
+        });
+      } catch (err) {
+        // 잘못된 구독 객체는 동기 예외를 던져 함수 전체를 500 으로 만든다. 여기서 막는다.
+        console.error('Web push threw synchronously:', err.message);
+        return Promise.resolve();
+      }
     });
 
     // 3. Send Expo Push
@@ -235,7 +241,7 @@ export default async function handler(req, res) {
 
     await Promise.all([...webPushPromises, ...expoPushPromises, ...flowPromises]);
 
-    res.status(200).json({ success: true, sentWeb: webTokens.length, sentExpo: expoTokens.length, sentFlow: flowPromises.length });
+    res.status(200).json({ success: true, sentWeb: uniqueWebTokens.length, dead: deadEndpoints.length, sentExpo: expoTokens.length, sentFlow: flowPromises.length });
   } catch (error) {
     console.error('Push notification error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
