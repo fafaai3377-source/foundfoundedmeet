@@ -94,7 +94,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: 설치 파일 만들기
-        run: npm run ${{ matrix.script }}
+        run: npm run ${{ matrix.script }} -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
