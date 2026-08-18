@@ -3261,6 +3261,7 @@ const [dayEventsDate, setDayEventsDate] = useState(null);
                           const top = (sMin / 60) * 78;
                           const h = Math.max(((eMin - sMin) / 60) * 78, 26);
                           const isLive = isTodayAnchor && nowMin >= toMin(r.start) && nowMin < toMin(r.end);
+                          const isPast = isTodayAnchor && nowMin >= toMin(r.end);
                           const ownerName = getOwnerName(r);
                           const isMine = r.who === user || r.owner === user || r.userId === user || ownerName === user;
                           let cls = 'blk--done';
